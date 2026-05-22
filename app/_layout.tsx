@@ -1,6 +1,7 @@
 import { useAuthStore } from "@features/auth/presentation/store/authStore";
 import { SupabaseAuthRepository } from "@features/infrastructure/repositories/SupabaseAuthRepository";
 import { supabase } from "@shared/infrastructure/supabase/client";
+import { ThemeProvider } from "@shared/infrastructure/theme/useTheme";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Slot, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
@@ -50,7 +51,9 @@ function AuthGuard() {
 export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthGuard />
+      <ThemeProvider>
+        <AuthGuard />
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

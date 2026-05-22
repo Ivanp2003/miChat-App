@@ -1,21 +1,24 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Room } from "@features/chat/domain/entities/Message";
 import { useRooms } from "@features/chat/presentation/hooks/useRooms";
+import { useTheme } from "@shared/infrastructure/theme/useTheme";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
-  Modal,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    FlatList,
+    Modal,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 export default function RoomsScreen() {
   const { rooms, isLoading, createRoom, isCreating, createError } = useRooms();
   const router = useRouter();
+  const { toggleTheme, theme, colors } = useTheme();
   const [modalVisible, setModalVisible] = useState(false);
   const [roomName, setRoomName] = useState("");
 
@@ -31,38 +34,86 @@ export default function RoomsScreen() {
 
   const renderRoom = ({ item }: { item: Room }) => (
     <TouchableOpacity
-      style={styles.roomItem}
+      style={[
+        styles.roomItem,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
       onPress={() => router.push(`/chat/${item.id}`)}
     >
-      <Text style={styles.roomName}># {item.name}</Text>
-      <Text style={styles.roomDate}>{item.createdAt.toLocaleDateString()}</Text>
+      <View
+        style={[
+          styles.roomIconContainer,
+          { backgroundColor: colors.inputBackground },
+        ]}
+      >
+        <Ionicons name="chatbubble-outline" size={24} color={colors.primary} />
+      </View>
+      <View style={styles.roomInfo}>
+        <Text style={[styles.roomName, { color: colors.text }]}>
+          {item.name}
+        </Text>
+        <Text style={[styles.roomDate, { color: colors.placeholder }]}>
+          {item.createdAt.toLocaleDateString()}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={colors.placeholder} />
     </TouchableOpacity>
   );
 
   if (isLoading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color="#6366f1" />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: colors.header, borderBottomColor: colors.border },
+        ]}
+      >
+        <Text style={[styles.headerTitle, { color: colors.text }]}>
+          Salas de chat
+        </Text>
+        <TouchableOpacity onPress={toggleTheme} style={styles.themeToggle}>
+          <Ionicons
+            name={theme === "light" ? "moon-outline" : "sunny-outline"}
+            size={24}
+            color={colors.text}
+          />
+        </TouchableOpacity>
+      </View>
       <FlatList
         data={rooms}
         keyExtractor={(r) => r.id}
         renderItem={renderRoom}
-        contentContainerStyle={rooms.length === 0 ? { flex: 1 } : undefined}
+        contentContainerStyle={
+          rooms.length === 0 ? styles.emptyList : undefined
+        }
         ListEmptyComponent={
           <View style={styles.centered}>
-            <Text style={styles.empty}>No hay salas aún. ¡Crea una!</Text>
+            <Ionicons
+              name="chatbubbles-outline"
+              size={64}
+              color={colors.placeholder}
+            />
+            <Text style={[styles.empty, { color: colors.text }]}>
+              No hay salas aún
+            </Text>
+            <Text style={styles.emptySub}>¡Crea una para comenzar!</Text>
           </View>
         }
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
-        <Text style={styles.fabText}>+</Text>
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: colors.primary }]}
+        onPress={() => setModalVisible(true)}
+      >
+        <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
 
       <Modal
@@ -76,12 +127,24 @@ export default function RoomsScreen() {
             style={StyleSheet.absoluteFill}
             onPress={() => setModalVisible(false)}
           />
-          <View style={styles.dialog}>
-            <Text style={styles.dialogTitle}>Nueva sala</Text>
-            {createError && <Text style={styles.dialogError}>{createError}</Text>}
+          <View style={[styles.dialog, { backgroundColor: colors.card }]}>
+            <Text style={[styles.dialogTitle, { color: colors.text }]}>
+              Nueva sala
+            </Text>
+            {createError && (
+              <Text style={styles.dialogError}>{createError}</Text>
+            )}
             <TextInput
-              style={styles.dialogInput}
+              style={[
+                styles.dialogInput,
+                {
+                  color: colors.text,
+                  backgroundColor: colors.inputBackground,
+                  borderColor: colors.border,
+                },
+              ]}
               placeholder="Nombre de la sala"
+              placeholderTextColor={colors.placeholder}
               value={roomName}
               onChangeText={setRoomName}
               autoFocus
@@ -92,10 +155,18 @@ export default function RoomsScreen() {
                 style={styles.cancelBtn}
                 onPress={() => setModalVisible(false)}
               >
-                <Text style={styles.cancelText}>Cancelar</Text>
+                <Text
+                  style={[styles.cancelText, { color: colors.placeholder }]}
+                >
+                  Cancelar
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.createBtn, isCreating && { opacity: 0.6 }]}
+                style={[
+                  styles.createBtn,
+                  { backgroundColor: colors.primary },
+                  isCreating && { opacity: 0.6 },
+                ]}
                 onPress={handleCreate}
                 disabled={isCreating}
               >
@@ -114,25 +185,57 @@ export default function RoomsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f5f5f5" },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  empty: { color: "#999", fontSize: 16 },
-  roomItem: {
-    backgroundColor: "#fff",
-    padding: 16,
+  container: { flex: 1, backgroundColor: "#fafafa" },
+  header: {
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 24,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderColor: "#e0e0e0",
+    borderColor: "#e5e7eb",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  roomName: { fontSize: 16, fontWeight: "600" },
-  roomDate: { fontSize: 12, color: "#999" },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#1f2937",
+  },
+  themeToggle: {
+    padding: 8,
+  },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  emptyList: { flex: 1 },
+  empty: { color: "#6b7280", fontSize: 18, fontWeight: "600", marginTop: 16 },
+  emptySub: { color: "#9ca3af", fontSize: 14, marginTop: 4 },
+  roomItem: {
+    backgroundColor: "#fff",
+    padding: 16,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  roomIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#eef2ff",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  roomInfo: { flex: 1 },
+  roomName: { fontSize: 16, fontWeight: "600", color: "#1f2937" },
+  roomDate: { fontSize: 12, color: "#9ca3af", marginTop: 2 },
   fab: {
     position: "absolute",
     right: 20,
     bottom: 28,
-    backgroundColor: "#007AFF",
+    backgroundColor: "#6366f1",
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -144,33 +247,39 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
   },
-  fabText: { color: "#fff", fontSize: 28, lineHeight: 32 },
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
     justifyContent: "center",
     padding: 24,
   },
-  dialog: { backgroundColor: "#fff", borderRadius: 12, padding: 20 },
-  dialogTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 12 },
-  dialogError: { color: "red", fontSize: 13, marginBottom: 8 },
-  dialogInput: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 10,
+  dialog: { backgroundColor: "#fff", borderRadius: 16, padding: 24 },
+  dialogTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1f2937",
     marginBottom: 16,
   },
-  dialogActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10 },
-  cancelBtn: { padding: 10 },
-  cancelText: { color: "#666", fontSize: 15 },
+  dialogError: { color: "#ef4444", fontSize: 14, marginBottom: 12 },
+  dialogInput: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+    marginBottom: 20,
+    backgroundColor: "#fafafa",
+  },
+  dialogActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12 },
+  cancelBtn: { padding: 12 },
+  cancelText: { color: "#6b7280", fontSize: 15, fontWeight: "500" },
   createBtn: {
-    backgroundColor: "#007AFF",
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    backgroundColor: "#6366f1",
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
   },
   createText: { color: "#fff", fontWeight: "600", fontSize: 15 },
 });
-
-

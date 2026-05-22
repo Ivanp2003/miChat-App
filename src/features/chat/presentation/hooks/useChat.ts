@@ -12,9 +12,19 @@ const sendMessageUseCase = new SendMessageUseCase(chatRepo);
 const getMessagesUseCase = new GetMessagesUseCase(chatRepo);
 const subscribeUseCase = new SubscribeToRoomUseCase(chatRepo);
 
-export function useChat(roomId: string) {
+export function useChat(roomId: string | undefined) {
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
+
+  // Early return if roomId is undefined
+  if (!roomId) {
+    return {
+      messages: [],
+      sendMessage: () => {},
+      isLoading: false,
+      isSending: false,
+    };
+  }
 
   // Paso 1: obtener historial de mensajes con cache
   const { data: messages = [], isLoading } = useQuery({
@@ -28,28 +38,59 @@ export function useChat(roomId: string) {
 
   // Paso 2: suscribirse al canal Realtime
   useEffect(() => {
+    if (!roomId) return;
     const unsubscribe = subscribeUseCase.execute(roomId, (newMsg) => {
       queryClient.setQueryData(["messages", roomId], (old: Message[] = []) => {
         // Evitar duplicados: el optimistic update ya agregó este mensaje
         const exists = old.some((m) => m.id === newMsg.id);
         return exists ? old : [...old, newMsg];
       });
+
+      // Show notification if message is from another user
+      if (newMsg.userId !== user?.id && roomId) {
+        // Dynamic import to prevent expo-notifications from loading in Expo Go
+        import("@shared/infrastructure/notifications/notificationService")
+          .then(({ showChatNotification }) => {
+            showChatNotification(newMsg.authorUsername, newMsg.content, roomId);
+          })
+          .catch(() => {
+            // Ignore if notifications not available (e.g., in Expo Go)
+          });
+      }
     });
     return unsubscribe; // Cleanup al desmontar: cierra el WebSocket
-  }, [roomId]);
+  }, [roomId, user?.id]);
 
   // Paso 3: enviar mensaje con optimistic update via useMutation
   const sendMutation = useMutation({
-    mutationFn: (content: string) =>
-      sendMessageUseCase.execute(roomId, user!.id, content),
+    mutationFn: async ({
+      content,
+      imageUri,
+    }: {
+      content: string;
+      imageUri?: string;
+    }) => {
+      let imageUrl: string | undefined;
+
+      // Upload image if provided
+      if (imageUri) {
+        const { uploadImage } =
+          await import("@shared/infrastructure/storage/storageService");
+        const uploadedUrl = await uploadImage(imageUri);
+        imageUrl = uploadedUrl ?? undefined;
+      }
+
+      return sendMessageUseCase.execute(roomId, user!.id, content, imageUrl);
+    },
 
     // onMutate se ejecuta ANTES de la petición (optimistic update)
-    onMutate: async (content) => {
+    onMutate: async ({ content, imageUri }) => {
       const tempMsg: Message = {
         id: `temp-${Date.now()}`,
         roomId,
         userId: user!.id,
         content,
+        imageUrl: imageUri, // Show local URI while uploading
         createdAt: new Date(),
         authorUsername: user!.username,
       };
@@ -60,13 +101,13 @@ export function useChat(roomId: string) {
       return { tempMsg }; // Contexto para onError
     },
 
-    onSuccess: (realMsg, _content, context) => {
+    onSuccess: (realMsg, _variables, context) => {
       queryClient.setQueryData(["messages", roomId], (old: Message[] = []) =>
         old.map((m) => (m.id === context?.tempMsg.id ? realMsg : m)),
       );
     },
 
-    onError: (_err, _content, context) => {
+    onError: (_err, _variables, context) => {
       if (context?.tempMsg) {
         queryClient.setQueryData(["messages", roomId], (old: Message[] = []) =>
           old.filter((m) => m.id !== context.tempMsg.id),
@@ -75,9 +116,13 @@ export function useChat(roomId: string) {
     },
   });
 
+  const sendMessage = async (content: string, imageUri?: string) => {
+    await sendMutation.mutateAsync({ content, imageUri });
+  };
+
   return {
     messages,
-    sendMessage: sendMutation.mutate,
+    sendMessage,
     isLoading,
     isSending: sendMutation.isPending,
   };
