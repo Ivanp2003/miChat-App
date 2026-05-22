@@ -28,21 +28,9 @@ export class SupabaseAuthRepository implements IAuthRepository {
     password: string,
     username: string,
   ): Promise<User> {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: undefined,
-      },
-    });
+    const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) throw error;
-
-    if (!data.user) {
-      throw new Error(
-        "Registro exitoso. Por favor revisa tu email para confirmar tu cuenta.",
-      );
-    }
-
+    if (!data.user) throw new Error("No se pudo crear el usuario");
     const { error: profileError } = await supabase
       .from("profiles")
       .insert({ id: data.user.id, username });
