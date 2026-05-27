@@ -13,4 +13,10 @@ export interface Room {
   name: string;
   createdBy: string;
   createdAt: Date;
+  unreadCount?: number;
+}
+
+export interface UserProfile {
+  id: string;
+  username: string;
 }

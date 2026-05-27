@@ -10,17 +10,11 @@
   "compilerOptions": {
     "strict": true,
     "baseUrl": ".",
-    "lib": [
-      "ESNext"
-    ],
-    "ignoreDeprecations": "6.0",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
     "paths": {
-      "@features/*": [
-        "src/features/*"
-      ],
-      "@shared/*": [
-        "src/shared/*"
-      ]
+      "@features/*": ["src/features/*"],
+      "@shared/*": ["src/shared/*"]
     }
   }
 }

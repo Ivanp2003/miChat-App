@@ -1,9 +1,11 @@
 import { useAuthStore } from "@features/auth/presentation/store/authStore";
 import { GetMessagesUseCase } from "@features/chat/application/use-cases/GetMessagesUseCase";
+import { MarkRoomAsReadUseCase } from "@features/chat/application/use-cases/MarkRoomAsReadUseCase";
 import { SendMessageUseCase } from "@features/chat/application/use-cases/SendMessageUseCase";
 import { SubscribeToRoomUseCase } from "@features/chat/application/use-cases/SubscribeToRoomUseCase";
-import { Message } from "@features/chat/domain/entities/Message";
+import { Message, Room } from "@features/chat/domain/entities/Message";
 import { SupabaseChatRepository } from "@features/chat/infrastructure/repositories/SupabaseChatRepository";
+import { supabase } from "@shared/infrastructure/supabase/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
@@ -11,6 +13,7 @@ const chatRepo = new SupabaseChatRepository();
 const sendMessageUseCase = new SendMessageUseCase(chatRepo);
 const getMessagesUseCase = new GetMessagesUseCase(chatRepo);
 const subscribeUseCase = new SubscribeToRoomUseCase(chatRepo);
+const markReadUseCase = new MarkRoomAsReadUseCase(chatRepo);
 
 export function useChat(roomId: string | undefined) {
   const user = useAuthStore((s) => s.user);
@@ -51,7 +54,11 @@ export function useChat(roomId: string | undefined) {
         // Dynamic import to prevent expo-notifications from loading in Expo Go
         import("@shared/infrastructure/notifications/notificationService")
           .then(({ showChatNotification }) => {
-            showChatNotification(newMsg.authorUsername, newMsg.content, roomId);
+            showChatNotification(
+              newMsg.authorUsername ?? "Usuario",
+              newMsg.content,
+              roomId as string,
+            );
           })
           .catch(() => {
             // Ignore if notifications not available (e.g., in Expo Go)
@@ -60,6 +67,20 @@ export function useChat(roomId: string | undefined) {
     });
     return unsubscribe; // Cleanup al desmontar: cierra el WebSocket
   }, [roomId, user?.id]);
+
+  // Paso 2.1: marcar como leída la sala cuando se abre o cambian los mensajes
+  useEffect(() => {
+    if (!roomId || !user?.id) return;
+    markReadUseCase
+      .execute(roomId, user.id)
+      .then(() => {
+        // Update rooms cache to reflect zero unread for this room
+        queryClient.setQueryData(["rooms"], (old: Room[] = []) =>
+          old.map((r) => (r.id === roomId ? { ...r, unreadCount: 0 } : r)),
+        );
+      })
+      .catch(() => {});
+  }, [roomId, user?.id, messages.length]);
 
   // Paso 3: enviar mensaje con optimistic update via useMutation
   const sendMutation = useMutation({
@@ -101,10 +122,24 @@ export function useChat(roomId: string | undefined) {
       return { tempMsg }; // Contexto para onError
     },
 
-    onSuccess: (realMsg, _variables, context) => {
+    onSuccess: (realMsg, variables, context) => {
       queryClient.setQueryData(["messages", roomId], (old: Message[] = []) =>
         old.map((m) => (m.id === context?.tempMsg.id ? realMsg : m)),
       );
+
+      // Trigger push notification to other participants
+      supabase.functions
+        .invoke("send-push-notification", {
+          body: {
+            roomId: roomId,
+            userId: user!.id,
+            content: variables.content,
+            authorUsername: user!.username,
+          },
+        })
+        .catch((err) => {
+          console.error("Failed to trigger push notification:", err);
+        });
     },
 
     onError: (_err, _variables, context) => {

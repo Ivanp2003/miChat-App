@@ -1,26 +1,52 @@
-import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 
-// Configure notification behavior
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+let Notifications: any = null;
+let isInitialized = false;
+
+async function ensureNotifications() {
+  if (isInitialized) return Notifications;
+
+  // Skip in Expo Go
+  if (Constants.executionEnvironment === "storeClient") {
+    return null;
+  }
+
+  try {
+    const module = await import("expo-notifications");
+    Notifications = module.default;
+
+    // Configure notification behavior
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+
+    isInitialized = true;
+    return Notifications;
+  } catch (error) {
+    console.warn("expo-notifications not available:", error);
+    return null;
+  }
+}
 
 export async function requestNotificationPermissions() {
-  const existingStatus = (await Notifications.getPermissionsAsync()) as any;
+  const NotificationsModule = await ensureNotifications();
+  if (!NotificationsModule) return false;
+
+  const existingStatus = await NotificationsModule.getPermissionsAsync();
   let finalStatus = existingStatus;
 
-  if (!existingStatus?.granted) {
-    const requested = (await Notifications.requestPermissionsAsync()) as any;
+  if (!existingStatus.granted) {
+    const requested = await NotificationsModule.requestPermissionsAsync();
     finalStatus = requested;
   }
 
-  if (!finalStatus?.granted) {
+  if (!finalStatus.granted) {
     console.warn("Failed to get push notification permissions");
     return false;
   }
@@ -31,9 +57,12 @@ export async function requestNotificationPermissions() {
 export async function scheduleNotification(
   title: string,
   body: string,
-  data?: any,
+  data?: Record<string, unknown>,
 ) {
-  await Notifications.scheduleNotificationAsync({
+  const NotificationsModule = await ensureNotifications();
+  if (!NotificationsModule) return;
+
+  await NotificationsModule.scheduleNotificationAsync({
     content: {
       title,
       body,
@@ -55,23 +84,29 @@ export async function showChatNotification(
   });
 }
 
-export function setupNotificationListeners() {
-  const subscription = Notifications.addNotificationReceivedListener(
-    (notification) => {
+export async function setupNotificationListeners() {
+  const NotificationsModule = await ensureNotifications();
+  if (!NotificationsModule)
+    return { subscription: null, responseSubscription: null };
+
+  const subscription = NotificationsModule.addNotificationReceivedListener(
+    (notification: any) => {
       console.log("Notification received:", notification);
     },
   );
 
   const responseSubscription =
-    Notifications.addNotificationResponseReceivedListener((response) => {
-      console.log("Notification response:", response);
-      // Handle navigation to chat room based on notification data
-      const roomId = response.notification.request.content.data?.roomId;
-      if (roomId) {
-        // Navigate to chat room (implementation would go here)
-        console.log("Navigate to room:", roomId);
-      }
-    });
+    NotificationsModule.addNotificationResponseReceivedListener(
+      (response: any) => {
+        console.log("Notification response:", response);
+        // Handle navigation to chat room based on notification data
+        const roomId = response.notification.request.content.data?.roomId;
+        if (roomId) {
+          // Navigate to chat room (implementation would go here)
+          console.log("Navigate to room:", roomId);
+        }
+      },
+    );
 
   return { subscription, responseSubscription };
 }

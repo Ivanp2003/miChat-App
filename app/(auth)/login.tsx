@@ -1,8 +1,10 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@features/auth/presentation/hooks/useAuth";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@shared/infrastructure/theme/useTheme";
 import { Link } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -13,12 +15,38 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { z } from "zod";
+
+const loginSchema = z.object({
+  email: z.string().email("Correo inválido"),
+  password: z.string().min(6, "Mínimo 6 caracteres"),
+});
+
+type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const { login, isLoading, error } = useAuth();
   const { colors } = useTheme();
+  const [secure, setSecure] = useState(true);
+  const {
+    control,
+    handleSubmit,
+    formState: { errors },
+    setError,
+  } = useForm<LoginForm>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
+  });
+
+  useEffect(() => {
+    if (error) {
+      setError("root", { message: error });
+    }
+  }, [error, setError]);
+
+  const onSubmit = (data: LoginForm) => {
+    login(data);
+  };
 
   return (
     <KeyboardAvoidingView
@@ -34,10 +62,10 @@ export default function LoginScreen() {
           </Text>
         </View>
 
-        {error && (
+        {errors.root && (
           <View style={styles.errorContainer}>
             <Ionicons name="alert-circle" size={16} color="#ef4444" />
-            <Text style={styles.error}>{error}</Text>
+            <Text style={styles.error}>{errors.root.message}</Text>
           </View>
         )}
 
@@ -45,7 +73,10 @@ export default function LoginScreen() {
           <View
             style={[
               styles.inputWrapper,
-              { backgroundColor: colors.card, borderColor: colors.border },
+              {
+                backgroundColor: colors.card,
+                borderColor: errors.email ? "#ef4444" : colors.border,
+              },
             ]}
           >
             <Ionicons
@@ -54,24 +85,41 @@ export default function LoginScreen() {
               color={colors.placeholder}
               style={styles.inputIcon}
             />
-            <TextInput
-              style={[
-                styles.input,
-                { color: colors.text, backgroundColor: colors.inputBackground },
-              ]}
-              placeholder="Correo electrónico"
-              placeholderTextColor={colors.placeholder}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
+            <Controller
+              control={control}
+              name="email"
+              render={({ field: { onChange, value } }) => (
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      color: colors.text,
+                      backgroundColor: colors.inputBackground,
+                    },
+                  ]}
+                  placeholder="Correo electrónico"
+                  placeholderTextColor={colors.placeholder}
+                  value={value}
+                  onChangeText={onChange}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+              )}
             />
           </View>
+          {errors.email && (
+            <Text style={[styles.fieldError, { color: "#ef4444" }]}>
+              {errors.email.message}
+            </Text>
+          )}
 
           <View
             style={[
               styles.inputWrapper,
-              { backgroundColor: colors.card, borderColor: colors.border },
+              {
+                backgroundColor: colors.card,
+                borderColor: errors.password ? "#ef4444" : colors.border,
+              },
             ]}
           >
             <Ionicons
@@ -80,18 +128,42 @@ export default function LoginScreen() {
               color={colors.placeholder}
               style={styles.inputIcon}
             />
-            <TextInput
-              style={[
-                styles.input,
-                { color: colors.text, backgroundColor: colors.inputBackground },
-              ]}
-              placeholder="Contraseña"
-              placeholderTextColor={colors.placeholder}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
+            <Controller
+              control={control}
+              name="password"
+              render={({ field: { onChange, value } }) => (
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      color: colors.text,
+                      backgroundColor: colors.inputBackground,
+                    },
+                  ]}
+                  placeholder="Contraseña"
+                  placeholderTextColor={colors.placeholder}
+                  value={value}
+                  onChangeText={onChange}
+                  secureTextEntry={secure}
+                />
+              )}
             />
+            <TouchableOpacity
+              onPress={() => setSecure((s: boolean) => !s)}
+              style={styles.eyeIcon}
+            >
+              <Ionicons
+                name={secure ? "eye-outline" : "eye-off-outline"}
+                size={20}
+                color={colors.placeholder}
+              />
+            </TouchableOpacity>
           </View>
+          {errors.password && (
+            <Text style={[styles.fieldError, { color: "#ef4444" }]}>
+              {errors.password.message}
+            </Text>
+          )}
         </View>
 
         <TouchableOpacity
@@ -100,7 +172,7 @@ export default function LoginScreen() {
             { backgroundColor: colors.primary },
             isLoading && styles.buttonDisabled,
           ]}
-          onPress={() => login({ email, password })}
+          onPress={handleSubmit(onSubmit)}
           disabled={isLoading}
         >
           {isLoading ? (
@@ -183,6 +255,10 @@ const styles = StyleSheet.create({
   inputIcon: {
     marginLeft: 16,
   },
+  eyeIcon: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
   input: {
     flex: 1,
     padding: 16,
@@ -214,6 +290,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#6b7280",
     fontSize: 14,
+  },
+  fieldError: {
+    fontSize: 12,
+    marginTop: -12,
+    marginBottom: 12,
+    marginLeft: 4,
   },
   linkHighlight: {
     color: "#6366f1",

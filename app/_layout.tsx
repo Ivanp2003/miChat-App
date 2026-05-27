@@ -2,6 +2,7 @@ import { useAuthStore } from "@features/auth/presentation/store/authStore";
 import { SupabaseAuthRepository } from "@features/infrastructure/repositories/SupabaseAuthRepository";
 import { supabase } from "@shared/infrastructure/supabase/client";
 import { ThemeProvider } from "@shared/infrastructure/theme/useTheme";
+import { ErrorBoundary } from "@shared/presentation/components/ErrorBoundary";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Slot, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
@@ -52,7 +53,9 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <AuthGuard />
+        <ErrorBoundary>
+          <AuthGuard />
+        </ErrorBoundary>
       </ThemeProvider>
     </QueryClientProvider>
   );

@@ -1,37 +1,107 @@
-import { Message, Room } from "@features/chat/domain/entities/Message";
+import {
+    Message,
+    Room,
+    UserProfile,
+} from "@features/chat/domain/entities/Message";
 import { IChatRepository } from "@features/chat/domain/repositories/IChatRepository";
 import { supabase } from "@shared/infrastructure/supabase/client";
 export class SupabaseChatRepository implements IChatRepository {
-  async getRooms(): Promise<Room[]> {
+  async getRooms(userId: string): Promise<Room[]> {
     const { data, error } = await supabase
-      .from("rooms")
-      .select("*")
-      .order("created_at", { ascending: false });
+      .from("room_participants")
+      .select(
+        "room_id, last_read_at, joined_at, rooms(id, name, created_by, created_at)",
+      )
+      .eq("user_id", userId)
+      .order("joined_at", { ascending: false });
     if (error) throw error;
-    return (data ?? []).map(this.mapRoom);
+
+    const baseRooms = (data ?? []).map((row: any) => ({
+      room: this.mapRoom(row.rooms),
+      lastReadAt: row.last_read_at as string | null,
+    }));
+
+    const roomsWithUnread = await Promise.all(
+      baseRooms.map(async ({ room, lastReadAt }) => {
+        const { count } = await supabase
+          .from("messages")
+          .select("id", { count: "exact", head: true })
+          .eq("room_id", room.id)
+          .neq("user_id", userId)
+          .gt("created_at", lastReadAt ?? "1970-01-01T00:00:00Z");
+        return { ...room, unreadCount: count ?? 0 } as Room;
+      }),
+    );
+
+    return roomsWithUnread;
   }
 
-  async createRoom(name: string, userId: string): Promise<Room> {
+  async createRoom(
+    name: string,
+    createdBy: string,
+    participantIds: string[],
+  ): Promise<Room> {
     const { data, error } = await supabase
       .from("rooms")
-      .insert({ name, created_by: userId })
+      .insert({ name, created_by: createdBy })
       .select()
       .single();
     if (error) throw error;
-    return this.mapRoom(data);
+    const room = this.mapRoom(data);
+
+    // Insert all participants including creator
+    const allParticipantIds = [
+      createdBy,
+      ...participantIds.filter((id) => id !== createdBy),
+    ];
+    const participants = allParticipantIds.map((userId) => ({
+      room_id: room.id,
+      user_id: userId,
+    }));
+    await supabase.from("room_participants").insert(participants);
+
+    return room;
+  }
+
+  async getUsers(excludeUserId: string): Promise<UserProfile[]> {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, username")
+      .neq("id", excludeUserId)
+      .order("username", { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map((row: any) => ({
+      id: row.id,
+      username: row.username,
+    }));
   }
 
   async getMessages(roomId: string): Promise<Message[]> {
     const { data, error } = await supabase
       .from("messages")
-      .select(
-        "id, room_id, user_id, content, image_url, created_at, profiles(username)",
-      )
+      .select("id, room_id, user_id, content, image_url, created_at")
       .eq("room_id", roomId)
       .order("created_at", { ascending: true })
       .limit(50);
     if (error) throw error;
-    return (data ?? []).map(this.mapMessage);
+
+    // Fetch usernames for all messages
+    const userIds = [...new Set((data ?? []).map((m) => m.user_id))];
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, username")
+      .in("id", userIds);
+    const usernameMap = new Map(profiles?.map((p) => [p.id, p.username]) ?? []);
+
+    return (data ?? []).map((msg) => ({
+      id: msg.id,
+      roomId: msg.room_id,
+      userId: msg.user_id,
+      content: msg.content,
+      imageUrl: msg.image_url,
+      createdAt: new Date(msg.created_at),
+      authorUsername: usernameMap.get(msg.user_id),
+    }));
   }
 
   async sendMessage(
@@ -48,12 +118,26 @@ export class SupabaseChatRepository implements IChatRepository {
         content,
         image_url: imageUrl,
       })
-      .select(
-        "id, room_id, user_id, content, image_url, created_at, profiles(username)",
-      )
+      .select("id, room_id, user_id, content, image_url, created_at")
       .single();
     if (error) throw error;
-    return this.mapMessage(data);
+
+    // Fetch username for the sent message
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", userId)
+      .single();
+
+    return {
+      id: data.id,
+      roomId: data.room_id,
+      userId: data.user_id,
+      content: data.content,
+      imageUrl: data.image_url,
+      createdAt: new Date(data.created_at),
+      authorUsername: profile?.username,
+    };
   }
 
   subscribeToRoom(
@@ -93,6 +177,15 @@ export class SupabaseChatRepository implements IChatRepository {
     return () => {
       supabase.removeChannel(channel);
     };
+  }
+
+  async markRoomAsRead(roomId: string, userId: string): Promise<void> {
+    const { error } = await supabase
+      .from("room_participants")
+      .update({ last_read_at: new Date().toISOString() })
+      .eq("room_id", roomId)
+      .eq("user_id", userId);
+    if (error) throw error;
   }
 
   private mapRoom = (raw: any): Room => ({

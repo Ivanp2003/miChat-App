@@ -1,25 +1,58 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@features/auth/presentation/hooks/useAuth";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@shared/infrastructure/theme/useTheme";
 import { Link } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import { z } from "zod";
+
+const registerSchema = z.object({
+  username: z.string().min(3, "Mínimo 3 caracteres"),
+  email: z.string().email("Correo inválido"),
+  password: z.string().min(6, "Mínimo 6 caracteres"),
+  role: z.enum(["cliente", "vendedor"]),
+});
+
+type RegisterForm = z.infer<typeof registerSchema>;
 
 export default function RegisterScreen() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [username, setUsername] = useState("");
-  const { register, isLoading, error } = useAuth();
+  const { register: signUp, isLoading, error } = useAuth();
   const { colors } = useTheme();
+  const [secure, setSecure] = useState(true);
+  const {
+    control,
+    handleSubmit,
+    formState: { errors },
+    setError,
+    watch,
+    setValue,
+  } = useForm<RegisterForm>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: { username: "", email: "", password: "", role: "cliente" },
+  });
+
+  const role = watch("role");
+
+  useEffect(() => {
+    if (error) {
+      setError("root", { message: error });
+    }
+  }, [error, setError]);
+
+  const onSubmit = (data: RegisterForm) => {
+    signUp(data);
+  };
 
   return (
     <KeyboardAvoidingView
@@ -41,18 +74,53 @@ export default function RegisterScreen() {
           </Text>
         </View>
 
-        {error && (
+        {errors.root && (
           <View style={styles.errorContainer}>
             <Ionicons name="alert-circle" size={16} color="#ef4444" />
-            <Text style={styles.error}>{error}</Text>
+            <Text style={styles.error}>{errors.root.message}</Text>
           </View>
         )}
 
         <View style={styles.inputContainer}>
+          {/* Selector de Rol */}
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
+            <TouchableOpacity
+              onPress={() => setValue("role", "cliente")}
+              style={{
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor:
+                  role === "cliente" ? colors.inputBackground : colors.card,
+              }}
+            >
+              <Text style={{ color: colors.text }}>Cliente</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setValue("role", "vendedor")}
+              style={{
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor:
+                  role === "vendedor" ? colors.inputBackground : colors.card,
+              }}
+            >
+              <Text style={{ color: colors.text }}>Vendedor</Text>
+            </TouchableOpacity>
+          </View>
+
           <View
             style={[
               styles.inputWrapper,
-              { backgroundColor: colors.card, borderColor: colors.border },
+              {
+                backgroundColor: colors.card,
+                borderColor: errors.username ? "#ef4444" : colors.border,
+              },
             ]}
           >
             <Ionicons
@@ -61,23 +129,40 @@ export default function RegisterScreen() {
               color={colors.placeholder}
               style={styles.inputIcon}
             />
-            <TextInput
-              style={[
-                styles.input,
-                { color: colors.text, backgroundColor: colors.inputBackground },
-              ]}
-              placeholder="Usuario (sin espacios)"
-              placeholderTextColor={colors.placeholder}
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
+            <Controller
+              control={control}
+              name="username"
+              render={({ field: { onChange, value } }) => (
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      color: colors.text,
+                      backgroundColor: colors.inputBackground,
+                    },
+                  ]}
+                  placeholder="Usuario (sin espacios)"
+                  placeholderTextColor={colors.placeholder}
+                  value={value}
+                  onChangeText={onChange}
+                  autoCapitalize="none"
+                />
+              )}
             />
           </View>
+          {errors.username && (
+            <Text style={[styles.fieldError, { color: "#ef4444" }]}>
+              {errors.username.message}
+            </Text>
+          )}
 
           <View
             style={[
               styles.inputWrapper,
-              { backgroundColor: colors.card, borderColor: colors.border },
+              {
+                backgroundColor: colors.card,
+                borderColor: errors.email ? "#ef4444" : colors.border,
+              },
             ]}
           >
             <Ionicons
@@ -86,24 +171,41 @@ export default function RegisterScreen() {
               color={colors.placeholder}
               style={styles.inputIcon}
             />
-            <TextInput
-              style={[
-                styles.input,
-                { color: colors.text, backgroundColor: colors.inputBackground },
-              ]}
-              placeholder="Correo electrónico"
-              placeholderTextColor={colors.placeholder}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
+            <Controller
+              control={control}
+              name="email"
+              render={({ field: { onChange, value } }) => (
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      color: colors.text,
+                      backgroundColor: colors.inputBackground,
+                    },
+                  ]}
+                  placeholder="Correo electrónico"
+                  placeholderTextColor={colors.placeholder}
+                  value={value}
+                  onChangeText={onChange}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+              )}
             />
           </View>
+          {errors.email && (
+            <Text style={[styles.fieldError, { color: "#ef4444" }]}>
+              {errors.email.message}
+            </Text>
+          )}
 
           <View
             style={[
               styles.inputWrapper,
-              { backgroundColor: colors.card, borderColor: colors.border },
+              {
+                backgroundColor: colors.card,
+                borderColor: errors.password ? "#ef4444" : colors.border,
+              },
             ]}
           >
             <Ionicons
@@ -112,18 +214,42 @@ export default function RegisterScreen() {
               color={colors.placeholder}
               style={styles.inputIcon}
             />
-            <TextInput
-              style={[
-                styles.input,
-                { color: colors.text, backgroundColor: colors.inputBackground },
-              ]}
-              placeholder="Contraseña (mín. 6 caracteres)"
-              placeholderTextColor={colors.placeholder}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
+            <Controller
+              control={control}
+              name="password"
+              render={({ field: { onChange, value } }) => (
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      color: colors.text,
+                      backgroundColor: colors.inputBackground,
+                    },
+                  ]}
+                  placeholder="Contraseña (mín. 6 caracteres)"
+                  placeholderTextColor={colors.placeholder}
+                  value={value}
+                  onChangeText={onChange}
+                  secureTextEntry={secure}
+                />
+              )}
             />
+            <TouchableOpacity
+              onPress={() => setSecure((s: boolean) => !s)}
+              style={styles.eyeIcon}
+            >
+              <Ionicons
+                name={secure ? "eye-outline" : "eye-off-outline"}
+                size={20}
+                color={colors.placeholder}
+              />
+            </TouchableOpacity>
           </View>
+          {errors.password && (
+            <Text style={[styles.fieldError, { color: "#ef4444" }]}>
+              {errors.password.message}
+            </Text>
+          )}
         </View>
 
         <TouchableOpacity
@@ -132,7 +258,7 @@ export default function RegisterScreen() {
             { backgroundColor: colors.primary },
             isLoading && styles.buttonDisabled,
           ]}
-          onPress={() => register({ email, password, username })}
+          onPress={handleSubmit(onSubmit)}
           disabled={isLoading}
         >
           {isLoading ? (
@@ -216,6 +342,10 @@ const styles = StyleSheet.create({
   inputIcon: {
     marginLeft: 16,
   },
+  eyeIcon: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
   input: {
     flex: 1,
     padding: 16,
@@ -247,6 +377,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#6b7280",
     fontSize: 14,
+  },
+  fieldError: {
+    fontSize: 12,
+    marginTop: -12,
+    marginBottom: 12,
+    marginLeft: 4,
   },
   linkHighlight: {
     color: "#6366f1",

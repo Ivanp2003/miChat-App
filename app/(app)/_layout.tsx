@@ -1,10 +1,12 @@
 import { useAuth } from "@features/auth/presentation/hooks/useAuth";
+import { usePushNotifications } from "@features/notifications/presentation/hooks/usePushNotifications";
 import { useTheme } from "@shared/infrastructure/theme/useTheme";
 import { Stack } from "expo-router";
 import { Text, TouchableOpacity } from "react-native";
 
 export default function AppLayout() {
   const { logout } = useAuth();
+  usePushNotifications();
   const { colors, theme } = useTheme();
 
   return (

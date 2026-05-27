@@ -1,11 +1,16 @@
+import { SupabaseAuthRepository } from "@features/infrastructure/repositories/SupabaseAuthRepository";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { LoginUseCase } from "../../application/use-cases/LoginUseCase";
 import { RegisterUseCase } from "../../application/use-cases/RegisterUseCase";
-import { SupabaseAuthRepository } from "@features/infrastructure/repositories/SupabaseAuthRepository";
 import { useAuthStore } from "../store/authStore";
 
-type RegisterDto = { email: string; password: string; username: string };
+type RegisterDto = {
+  email: string;
+  password: string;
+  username: string;
+  role: "cliente" | "vendedor";
+};
 
 const authRepo = new SupabaseAuthRepository();
 const loginUseCase = new LoginUseCase(authRepo);
@@ -26,8 +31,8 @@ export function useAuth() {
   });
 
   const registerMutation = useMutation({
-    mutationFn: ({ email, password, username }: RegisterDto) =>
-      registerUseCase.execute(email, password, username),
+    mutationFn: ({ email, password, username, role }: RegisterDto) =>
+      registerUseCase.execute(email, password, username, role),
     onSuccess: (user) => {
       setUser(user);
       router.replace("/(app)");

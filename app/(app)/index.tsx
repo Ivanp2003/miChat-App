@@ -1,7 +1,11 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { Room } from "@features/chat/domain/entities/Message";
+import { Room, UserProfile } from "@features/chat/domain/entities/Message";
 import { useRooms } from "@features/chat/presentation/hooks/useRooms";
 import { useTheme } from "@shared/infrastructure/theme/useTheme";
+import {
+    EmptyState,
+    LoadingState,
+} from "@shared/presentation/components/LoadingState";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -14,58 +18,123 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 
 export default function RoomsScreen() {
-  const { rooms, isLoading, createRoom, isCreating, createError } = useRooms();
+  const {
+    rooms,
+    isLoading,
+    createRoom,
+    isCreating,
+    createError,
+    users,
+    isLoadingUsers,
+  } = useRooms();
   const router = useRouter();
   const { toggleTheme, theme, colors } = useTheme();
   const [modalVisible, setModalVisible] = useState(false);
   const [roomName, setRoomName] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
   const handleCreate = () => {
-    if (!roomName.trim() || isCreating) return;
-    createRoom(roomName.trim(), {
-      onSuccess: () => {
-        setRoomName("");
-        setModalVisible(false);
+    if (!roomName.trim() || !selectedUserId || isCreating) return;
+    createRoom(
+      { name: roomName.trim(), participantIds: [selectedUserId] },
+      {
+        onSuccess: () => {
+          setRoomName("");
+          setSelectedUserId(null);
+          setModalVisible(false);
+        },
       },
-    });
+    );
   };
 
-  const renderRoom = ({ item }: { item: Room }) => (
-    <TouchableOpacity
-      style={[
-        styles.roomItem,
-        { backgroundColor: colors.card, borderColor: colors.border },
-      ]}
-      onPress={() => router.push(`/chat/${item.id}`)}
-    >
-      <View
+  const renderUserItem = ({
+    item,
+    index,
+  }: {
+    item: UserProfile;
+    index: number;
+  }) => (
+    <Animated.View entering={FadeInDown.delay(index * 50).springify()}>
+      <TouchableOpacity
         style={[
-          styles.roomIconContainer,
-          { backgroundColor: colors.inputBackground },
+          styles.userItem,
+          {
+            backgroundColor:
+              selectedUserId === item.id
+                ? colors.primary
+                : colors.inputBackground,
+            borderColor: colors.border,
+          },
         ]}
+        onPress={() => setSelectedUserId(item.id)}
       >
-        <Ionicons name="chatbubble-outline" size={24} color={colors.primary} />
-      </View>
-      <View style={styles.roomInfo}>
-        <Text style={[styles.roomName, { color: colors.text }]}>
-          {item.name}
+        <Ionicons
+          name="person-outline"
+          size={18}
+          color={selectedUserId === item.id ? "#fff" : colors.placeholder}
+          style={{ marginRight: 8 }}
+        />
+        <Text
+          style={{
+            color: selectedUserId === item.id ? "#fff" : colors.text,
+            fontWeight: selectedUserId === item.id ? "600" : "400",
+          }}
+        >
+          {item.username}
         </Text>
-        <Text style={[styles.roomDate, { color: colors.placeholder }]}>
-          {item.createdAt.toLocaleDateString()}
-        </Text>
-      </View>
-      <Ionicons name="chevron-forward" size={20} color={colors.placeholder} />
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+
+  const renderRoom = ({ item, index }: { item: Room; index: number }) => (
+    <Animated.View entering={FadeInUp.delay(index * 100).springify()}>
+      <TouchableOpacity
+        style={[
+          styles.roomItem,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+        onPress={() => router.push(`/chat/${item.id}`)}
+      >
+        <View
+          style={[
+            styles.roomIconContainer,
+            { backgroundColor: colors.inputBackground },
+          ]}
+        >
+          <Ionicons
+            name="chatbubble-outline"
+            size={24}
+            color={colors.primary}
+          />
+        </View>
+        <View style={styles.roomInfo}>
+          <Text style={[styles.roomName, { color: colors.text }]}>
+            {item.name}
+          </Text>
+          <Text style={[styles.roomDate, { color: colors.placeholder }]}>
+            {item.createdAt.toLocaleDateString()}
+          </Text>
+        </View>
+        {item.unreadCount && item.unreadCount > 0 ? (
+          <Animated.View
+            entering={FadeInUp}
+            style={[styles.badge, { backgroundColor: colors.primary }]}
+          >
+            <Text style={styles.badgeText}>
+              {item.unreadCount > 99 ? "99+" : item.unreadCount}
+            </Text>
+          </Animated.View>
+        ) : null}
+        <Ionicons name="chevron-forward" size={20} color={colors.placeholder} />
+      </TouchableOpacity>
+    </Animated.View>
   );
 
   if (isLoading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#6366f1" />
-      </View>
-    );
+    return <LoadingState message="Cargando salas..." color={colors.primary} />;
   }
 
   return (
@@ -89,37 +158,33 @@ export default function RoomsScreen() {
       </View>
       <FlatList
         data={rooms}
-        keyExtractor={(r) => r.id}
+        keyExtractor={(r, i) => `${r.id}-${i}`}
         renderItem={renderRoom}
         contentContainerStyle={
           rooms.length === 0 ? styles.emptyList : undefined
         }
         ListEmptyComponent={
-          <View style={styles.centered}>
-            <Ionicons
-              name="chatbubbles-outline"
-              size={64}
-              color={colors.placeholder}
-            />
-            <Text style={[styles.empty, { color: colors.text }]}>
-              No hay salas aún
-            </Text>
-            <Text style={styles.emptySub}>¡Crea una para comenzar!</Text>
-          </View>
+          <EmptyState
+            icon="chatbubbles-outline"
+            title="No hay salas aún"
+            subtitle="¡Crea una para comenzar!"
+          />
         }
       />
 
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.primary }]}
-        onPress={() => setModalVisible(true)}
-      >
-        <Ionicons name="add" size={28} color="#fff" />
-      </TouchableOpacity>
+      <Animated.View entering={FadeInUp.springify()}>
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: colors.primary }]}
+          onPress={() => setModalVisible(true)}
+        >
+          <Ionicons name="add" size={28} color="#fff" />
+        </TouchableOpacity>
+      </Animated.View>
 
       <Modal
         visible={modalVisible}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.overlay}>
@@ -127,7 +192,11 @@ export default function RoomsScreen() {
             style={StyleSheet.absoluteFill}
             onPress={() => setModalVisible(false)}
           />
-          <View style={[styles.dialog, { backgroundColor: colors.card }]}>
+          <Animated.View
+            entering={FadeInUp.springify()}
+            exiting={FadeInUp.springify()}
+            style={[styles.dialog, { backgroundColor: colors.card }]}
+          >
             <Text style={[styles.dialogTitle, { color: colors.text }]}>
               Nueva sala
             </Text>
@@ -150,6 +219,24 @@ export default function RoomsScreen() {
               autoFocus
               maxLength={50}
             />
+            <Text style={[styles.userLabel, { color: colors.text }]}>
+              Selecciona un participante
+            </Text>
+            {isLoadingUsers ? (
+              <ActivityIndicator
+                color={colors.primary}
+                style={{ marginVertical: 12 }}
+              />
+            ) : (
+              <FlatList
+                data={users}
+                keyExtractor={(u, i) => `${u.id}-${i}`}
+                renderItem={renderUserItem}
+                style={styles.userList}
+                contentContainerStyle={{ paddingBottom: 8 }}
+                showsVerticalScrollIndicator={false}
+              />
+            )}
             <View style={styles.dialogActions}>
               <TouchableOpacity
                 style={styles.cancelBtn}
@@ -165,10 +252,12 @@ export default function RoomsScreen() {
                 style={[
                   styles.createBtn,
                   { backgroundColor: colors.primary },
-                  isCreating && { opacity: 0.6 },
+                  (!roomName.trim() || !selectedUserId || isCreating) && {
+                    opacity: 0.6,
+                  },
                 ]}
                 onPress={handleCreate}
-                disabled={isCreating}
+                disabled={!roomName.trim() || !selectedUserId || isCreating}
               >
                 {isCreating ? (
                   <ActivityIndicator color="#fff" size="small" />
@@ -177,7 +266,7 @@ export default function RoomsScreen() {
                 )}
               </TouchableOpacity>
             </View>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
     </View>
@@ -231,6 +320,20 @@ const styles = StyleSheet.create({
   roomInfo: { flex: 1 },
   roomName: { fontSize: 16, fontWeight: "600", color: "#1f2937" },
   roomDate: { fontSize: 12, color: "#9ca3af", marginTop: 2 },
+  badge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8,
+  },
+  badgeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
   fab: {
     position: "absolute",
     right: 20,
@@ -273,6 +376,24 @@ const styles = StyleSheet.create({
   dialogActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12 },
   cancelBtn: { padding: 12 },
   cancelText: { color: "#6b7280", fontSize: 15, fontWeight: "500" },
+  userLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  userList: {
+    maxHeight: 140,
+    marginBottom: 16,
+  },
+  userItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
   createBtn: {
     backgroundColor: "#6366f1",
     borderRadius: 12,

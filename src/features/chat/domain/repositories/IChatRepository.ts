@@ -1,8 +1,13 @@
-import { Message, Room } from "../entities/Message";
+import { Message, Room, UserProfile } from "../entities/Message";
 
 export interface IChatRepository {
-  getRooms(): Promise<Room[]>;
-  createRoom(name: string, userId: string): Promise<Room>;
+  getRooms(userId: string): Promise<Room[]>;
+  createRoom(
+    name: string,
+    createdBy: string,
+    participantIds: string[],
+  ): Promise<Room>;
+  getUsers(excludeUserId: string): Promise<UserProfile[]>;
   getMessages(roomId: string): Promise<Message[]>;
   sendMessage(
     roomId: string,
@@ -14,4 +19,5 @@ export interface IChatRepository {
     roomId: string,
     onMessage: (msg: Message) => void,
   ): () => void;
+  markRoomAsRead(roomId: string, userId: string): Promise<void>;
 }

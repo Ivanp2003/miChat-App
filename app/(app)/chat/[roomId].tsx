@@ -3,11 +3,16 @@ import { useAuthStore } from "@features/auth/presentation/store/authStore";
 import { Message } from "@features/chat/domain/entities/Message";
 import { useChat } from "@features/chat/presentation/hooks/useChat";
 import { useTheme } from "@shared/infrastructure/theme/useTheme";
+import {
+    EmptyState,
+    LoadingState,
+} from "@shared/presentation/components/LoadingState";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
+    Alert,
     FlatList,
     Image,
     KeyboardAvoidingView,
@@ -18,6 +23,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 
 export default function ChatScreen() {
   const { roomId } = useLocalSearchParams<{ roomId: string }>();
@@ -36,10 +42,16 @@ export default function ChatScreen() {
   const handleSend = useCallback(async () => {
     if (!input.trim() && !selectedImage) return;
     setIsUploading(true);
-    await sendMessage(input.trim(), selectedImage || undefined);
-    setInput("");
-    setSelectedImage(null);
-    setIsUploading(false);
+    try {
+      await sendMessage(input.trim(), selectedImage || undefined);
+      setInput("");
+      setSelectedImage(null);
+    } catch (err: any) {
+      const message = err?.message || "No se pudo enviar el mensaje";
+      Alert.alert("Error", message);
+    } finally {
+      setIsUploading(false);
+    }
   }, [input, selectedImage, sendMessage]);
 
   const handlePickImage = async () => {
@@ -59,70 +71,81 @@ export default function ChatScreen() {
     setSelectedImage(null);
   };
 
-  const renderMsg = ({ item }: { item: Message }) => {
+  const renderMsg = ({ item, index }: { item: Message; index: number }) => {
     const isOwn = item.userId === user?.id;
     return (
-      <View style={[styles.row, isOwn && styles.rowOwn]}>
-        {!isOwn && (
-          <View style={[styles.avatar, { backgroundColor: colors.card }]}>
-            <Ionicons name="person" size={20} color={colors.primary} />
-          </View>
-        )}
-        <View
-          style={[
-            styles.bubble,
-            isOwn ? styles.own : styles.other,
-            isOwn && { backgroundColor: colors.primary },
-            !isOwn && {
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-            },
-          ]}
-        >
+      <Animated.View
+        entering={FadeInUp.delay(Math.min(index * 50, 500)).springify()}
+      >
+        <View style={[styles.row, isOwn && styles.rowOwn]}>
           {!isOwn && (
-            <Text style={[styles.author, { color: colors.primary }]}>
-              {item.authorUsername}
-            </Text>
+            <View style={[styles.avatar, { backgroundColor: colors.card }]}>
+              <Ionicons name="person" size={20} color={colors.primary} />
+            </View>
           )}
-          {item.imageUrl && (
-            <Image
-              source={{ uri: item.imageUrl }}
-              style={styles.messageImage}
-              resizeMode="cover"
-            />
-          )}
-          {item.content && (
-            <Text
-              style={[
-                styles.text,
-                isOwn && styles.textOwn,
-                !isOwn && { color: colors.text },
-              ]}
-            >
-              {item.content}
-            </Text>
-          )}
-          <View style={styles.timeRow}>
-            <Text
-              style={[styles.time, !isOwn && { color: colors.placeholder }]}
-            >
-              {item.createdAt.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </Text>
-            {isOwn && (
-              <Ionicons
-                name="checkmark-done"
-                size={14}
-                color="rgba(255,255,255,0.7)"
+          <View
+            style={[
+              styles.bubble,
+              isOwn ? styles.own : styles.other,
+              isOwn && { backgroundColor: colors.primary },
+              !isOwn && {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            {!isOwn && (
+              <Text style={[styles.author, { color: colors.primary }]}>
+                {item.authorUsername}
+              </Text>
+            )}
+            {item.imageUrl && (
+              <Animated.Image
+                source={{ uri: item.imageUrl }}
+                style={styles.messageImage}
+                resizeMode="cover"
+                entering={FadeIn}
               />
             )}
+            {item.content && (
+              <Text
+                style={[
+                  styles.text,
+                  isOwn && styles.textOwn,
+                  !isOwn && { color: colors.text },
+                ]}
+              >
+                {item.content}
+              </Text>
+            )}
+            <View style={styles.timeRow}>
+              <Text
+                style={[styles.time, !isOwn && { color: colors.placeholder }]}
+              >
+                {item.createdAt.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </Text>
+              {isOwn && (
+                <Ionicons
+                  name="checkmark-done"
+                  size={14}
+                  color="rgba(255,255,255,0.7)"
+                />
+              )}
+            </View>
           </View>
         </View>
-      </View>
+      </Animated.View>
     );
   };
+
+  if (isLoading) {
+    return (
+      <LoadingState message="Cargando mensajes..." color={colors.primary} />
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -133,25 +156,39 @@ export default function ChatScreen() {
       <FlatList
         ref={listRef}
         data={messages}
-        keyExtractor={(m) => m.id}
+        keyExtractor={(m, i) => `${m.id}-${i}`}
         renderItem={renderMsg}
-        contentContainerStyle={{ padding: 12 }}
+        contentContainerStyle={
+          messages.length === 0 ? { flex: 1 } : { padding: 12 }
+        }
+        ListEmptyComponent={
+          <EmptyState
+            icon="chatbubble-outline"
+            title="Sin mensajes aún"
+            subtitle="Sé el primero en escribir algo"
+          />
+        }
       />
       {selectedImage && (
-        <View
-          style={[
-            styles.imagePreview,
-            { backgroundColor: colors.card, borderTopColor: colors.border },
-          ]}
-        >
-          <Image source={{ uri: selectedImage }} style={styles.previewImage} />
-          <TouchableOpacity
-            style={[styles.removeImageBtn, { backgroundColor: colors.error }]}
-            onPress={handleRemoveImage}
+        <Animated.View entering={FadeInUp}>
+          <View
+            style={[
+              styles.imagePreview,
+              { backgroundColor: colors.card, borderTopColor: colors.border },
+            ]}
           >
-            <Ionicons name="close" size={16} color="#fff" />
-          </TouchableOpacity>
-        </View>
+            <Image
+              source={{ uri: selectedImage }}
+              style={styles.previewImage}
+            />
+            <TouchableOpacity
+              style={[styles.removeImageBtn, { backgroundColor: colors.error }]}
+              onPress={handleRemoveImage}
+            >
+              <Ionicons name="close" size={16} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
       )}
       <View
         style={[
