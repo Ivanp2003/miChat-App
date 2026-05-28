@@ -1,67 +1,42 @@
-import * as FileSystem from "expo-file-system/legacy";
-import * as ImageManipulator from "expo-image-manipulator";
-import { storage, APPWRITE_CONFIG } from "../appwrite/client";
-import { ID } from "appwrite";
-
-export async function uploadImage(
-  fileUri: string,
-  bucketId: string = APPWRITE_CONFIG.STORAGE_BUCKET_ID,
-): Promise<string | null> {
+export const uploadImage = async (bucketId: string, localUri: string) => {
   try {
-    // Generate unique filename
-    const fileExt = "jpg"; // we re-encode to JPEG below
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-    const fileId = ID.unique();
+    const filename = localUri.split('/').pop() || 'image.jpeg';
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1]}` : 'image/jpeg';
 
-    // Compress and normalize image
-    let workingUri = fileUri;
-    const manipulated = await ImageManipulator.manipulateAsync(
-      workingUri,
-      [{ resize: { width: 1280 } }],
-      { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG },
-    );
-    workingUri = manipulated.uri;
+    const formData = new FormData();
+    formData.append('fileId', 'unique()'); 
+    formData.append('file', {
+      uri: localUri,
+      name: filename,
+      type: type,
+    } as any);
 
-    // Validate file size using legacy API
-    const info = await FileSystem.getInfoAsync(workingUri);
-    if (
-      "size" in info &&
-      typeof (info as any).size === "number" &&
-      (info as any).size > 7_000_000
-    ) {
-      return null;
-    }
-
-    // Convert URI to Uint8Array
-    const base64 = await FileSystem.readAsStringAsync(workingUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-    const file = new File([bytes], fileName, { type: "image/jpeg" });
-
-    // Upload to AppWrite Storage
-    console.log("Uploading to bucket:", bucketId, "file:", fileName);
-
-    const result = await storage.createFile(
-      bucketId,
-      fileId,
-      file,
+    const response = await fetch(
+      `https://nyc.cloud.appwrite.io/v1/storage/buckets/${bucketId}/files`,
+      {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'X-Appwrite-Project': '6a178edc000fed813891',
+        },
+      }
     );
 
-    if (!result) {
-      console.error("Upload error: No result returned");
-      return null;
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Error en la petición REST');
     }
 
-    // Get file view URL
-    const fileView = storage.getFileView(bucketId, fileId);
+    // Retornamos la URL limpia con el ID real que nos dio el servidor
+    return `https://nyc.cloud.appwrite.io/v1/storage/buckets/${bucketId}/files/${result.$id}/preview?width=400&height=400&project=6a178edc000fed813891`;
 
-    return fileView.toString();
   } catch (error) {
-    console.error("Error uploading image:", error);
+    console.error("Error en subida REST:", error);
     return null;
   }
-}
+};
 
 export async function pickImage(): Promise<string | null> {
   // This will be implemented in the UI layer using expo-image-picker

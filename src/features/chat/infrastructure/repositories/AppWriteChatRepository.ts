@@ -1,8 +1,7 @@
-import { ExecutionMethod, ID, Query } from "appwrite";
+import { ID, Query } from "appwrite";
 import {
     APPWRITE_CONFIG,
     databases,
-    functions,
 } from "../../../../shared/infrastructure/appwrite/client";
 import { Message, Room, UserProfile } from "../../domain/entities/Message";
 import { IChatRepository } from "../../domain/repositories/IChatRepository";
@@ -16,8 +15,8 @@ export class AppWriteChatRepository implements IChatRepository {
   // Obtener salas usando Desnormalización (Query por Array)
   async getRooms(userId: string): Promise<Room[]> {
     const response = await databases.listDocuments(this.dbId, this.roomsColl, [
-      Query.equal("participant_ids", userId),
-      Query.orderDesc("updated_at"),
+      Query.contains("participant_ids", userId),
+      Query.orderDesc("created_at"),
     ]);
 
     return response.documents.map((doc) => ({
@@ -29,34 +28,52 @@ export class AppWriteChatRepository implements IChatRepository {
     }));
   }
 
-  // Creación de sala via Cloud Function (server-side) para asignar permisos
-  // a TODOS los participantes. Desde el cliente SDK no se permite asignar
-  // permisos a otros usuarios (restricción de seguridad de AppWrite).
+  // Creación directa SIN permisos a nivel de documento.
+  // Requiere que la colección rooms tenga:
+  //   1. "Document Level Permissions" → DESHABILITADO
+  //   2. Permisos de colección: read:users, create:users, update:users
   async createRoom(
     name: string,
     createdBy: string,
     participantIds: string[],
   ): Promise<Room> {
-    // Asegurar que el creador esté incluido en los participantes
     const allParticipants = participantIds.includes(createdBy)
       ? participantIds
       : [...participantIds, createdBy];
 
-    const execution = await functions.createExecution(
-      APPWRITE_CONFIG.FUNCTIONS.CREATE_ROOM,
-      JSON.stringify({ name, createdBy, participantIds: allParticipants }),
-      false,
-      "/",
-      ExecutionMethod.POST,
+    const participants = await databases.listDocuments(
+      this.dbId,
+      this.profilesColl,
+      [Query.equal("$id", allParticipants.join(","))],
     );
 
-    const result = JSON.parse(execution.responseBody);
+    const roomId = ID.unique();
+    const doc = await databases.createDocument(
+      this.dbId,
+      this.roomsColl,
+      roomId,
+      {
+        name,
+        created_by: createdBy,
+        created_at: new Date().toISOString(),
+        participant_ids: allParticipants,
+        participant_details: JSON.stringify(
+          participants.documents.map((p) => ({
+            id: p.$id,
+            username: p.username,
+            avatar_url: p.avatar_url,
+          })),
+        ),
+      },
+    );
 
-    if (!result.success) {
-      throw new Error(result.error || "Error creating room via function");
-    }
-
-    return result.room;
+    return {
+      id: doc.$id,
+      name: doc.name,
+      createdBy: doc.created_by,
+      createdAt: new Date(doc.created_at),
+      unreadCount: 0,
+    };
   }
 
   async getMessages(roomId: string): Promise<Message[]> {
@@ -109,6 +126,9 @@ export class AppWriteChatRepository implements IChatRepository {
       created_at: new Date().toISOString(),
     };
 
+    console.log("Saving message with image_url:", imageUrl);
+    console.log("Full messageData:", messageData);
+
     // Nota: Los permisos de lectura de este mensaje se heredan o se restringen a los miembros de la sala
     const doc = await databases.createDocument(
       this.dbId,
@@ -116,6 +136,8 @@ export class AppWriteChatRepository implements IChatRepository {
       messageId,
       messageData,
     );
+
+    console.log("Document saved with image_url:", doc.image_url);
 
     // Obtener username del autor
     const profile = await databases.getDocument(

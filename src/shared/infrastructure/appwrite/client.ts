@@ -1,4 +1,4 @@
-import { Account, Client, Databases, Functions, Storage } from "appwrite";
+import { Account, Client, Databases, Storage } from "appwrite";
 
 // Polyfill para React Native/Expo con Hermes - WebSocket handshake
 if (typeof (global as any).self === "undefined") {
@@ -18,9 +18,6 @@ export const APPWRITE_CONFIG = {
     PUSH_TOKENS: process.env.EXPO_PUBLIC_APPWRITE_PUSH_TOKENS_ID!,
   },
   STORAGE_BUCKET_ID: process.env.EXPO_PUBLIC_APPWRITE_STORAGE_ID!,
-  FUNCTIONS: {
-    CREATE_ROOM: process.env.EXPO_PUBLIC_APPWRITE_CREATE_ROOM_FUNCTION_ID!,
-  },
 };
 
 // Cliente configurado para React Native/Expo
@@ -31,5 +28,4 @@ const client = new Client()
 export const account = new Account(client);
 export const databases = new Databases(client);
 export const storage = new Storage(client);
-export const functions = new Functions(client);
 export const appwriteClient = client;

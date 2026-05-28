@@ -56,7 +56,7 @@ export default function ChatScreen() {
 
   const handlePickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: "images",
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.7,
@@ -99,14 +99,29 @@ export default function ChatScreen() {
                 {item.authorUsername}
               </Text>
             )}
-            {item.imageUrl && (
-              <Animated.Image
-                source={{ uri: item.imageUrl }}
-                style={styles.messageImage}
-                resizeMode="cover"
-                entering={FadeIn}
-              />
-            )}
+            {(() => {
+              // 1. Limpiar y forzar el endpoint de visualización directa
+              const rawUrl = item.image_url || item.imageUrl || '';
+              let fixedUrl = rawUrl.replace('/preview', '/view');
+
+              // 2. Eliminar parámetros de tamaño que confunden al endpoint de vista directa
+              fixedUrl = fixedUrl.split('?')[0]; 
+
+              // 3. Pegarle únicamente el Project ID que es el pase de entrada obligatorio
+              const finalUri = `${fixedUrl}?project=6a178edc000fed813891`;
+
+              console.log("🔥 URL Final que intentará cargar Android:", finalUri);
+
+              if (rawUrl) {
+                return (
+                  <Animated.Image
+                    source={{ uri: finalUri }}
+                    style={{ width: 250, height: 250, borderRadius: 10 }}
+                  />
+                );
+              }
+              return null;
+            })()}
             {item.content && (
               <Text
                 style={[

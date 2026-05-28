@@ -54,7 +54,7 @@ module.exports = async function (context) {
     const pushTokensResp = await databases.listDocuments(
       process.env.APPWRITE_DATABASE_ID,
       process.env.APPWRITE_PUSH_TOKENS_COLLECTION_ID,
-      [Query.equal('user_id', recipients.join(','))]
+      [Query.equal('user_id', recipients)]
     );
 
     // Enviar push notifications directamente a Expo Push API

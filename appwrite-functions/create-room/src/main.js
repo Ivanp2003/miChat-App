@@ -25,14 +25,13 @@ module.exports = async function (context) {
     const participants = await databases.listDocuments(
       process.env.APPWRITE_DATABASE_ID,
       process.env.APPWRITE_PROFILES_COLLECTION_ID,
-      [Query.equal('$id', participantIds.join(','))]
+      [Query.equal('$id', participantIds)]
     );
 
     const roomData = {
       name,
       created_by: createdBy,
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
       participant_ids: participantIds,
       participant_details: JSON.stringify(
         participants.documents.map((p) => ({

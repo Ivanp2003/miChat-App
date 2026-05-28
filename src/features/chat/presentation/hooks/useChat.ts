@@ -23,7 +23,9 @@ export function useChat(roomId: string | undefined) {
       roomId ? getMessagesUseCase.execute(roomId) : Promise.resolve([]),
     enabled: !!user && !!roomId,
     // Los mensajes nuevos llegan vía push notifications → invalidación de queries.
+    // Polling como fallback cuando las push no llegan (dev / Expo Go)
     staleTime: Infinity,
+    refetchInterval: 30_000,
   });
 
   // Los mensajes nuevos llegan vía push notifications → invalidación de queries.
@@ -58,46 +60,51 @@ export function useChat(roomId: string | undefined) {
       if (imageUri) {
         const { uploadImage } =
           await import("@shared/infrastructure/storage/appwriteStorageService");
-        const uploadedUrl = await uploadImage(imageUri);
+        const { APPWRITE_CONFIG } = await import(
+          "@shared/infrastructure/appwrite/client"
+        );
+        const uploadedUrl = await uploadImage(
+          APPWRITE_CONFIG.STORAGE_BUCKET_ID,
+          imageUri,
+        );
+        console.log("Upload result:", uploadedUrl);
         imageUrl = uploadedUrl ?? undefined;
+        console.log("Final imageUrl to save:", imageUrl);
       }
 
       return sendMessageUseCase.execute(roomId!, user!.id, content, imageUrl);
     },
 
-    // onMutate se ejecuta ANTES de la petición (optimistic update)
     onMutate: async ({ content, imageUri }) => {
+      await queryClient.cancelQueries({ queryKey: ["messages", roomId] });
+
+      const prev = queryClient.getQueryData<Message[]>(["messages", roomId]);
+
       const tempMsg: Message = {
         id: `temp-${Date.now()}`,
         roomId: roomId!,
         userId: user!.id,
         content,
-        imageUrl: imageUri, // Show local URI while uploading
+        imageUrl: imageUri,
         createdAt: new Date(),
         authorUsername: user!.username,
       };
-      queryClient.setQueryData(["messages", roomId], (old: Message[] = []) => [
+      queryClient.setQueryData<Message[]>(["messages", roomId], (old = []) => [
         ...old,
         tempMsg,
       ]);
-      return { tempMsg }; // Contexto para onError
-    },
 
-    onSuccess: (realMsg, variables, context) => {
-      queryClient.setQueryData(["messages", roomId], (old: Message[] = []) =>
-        old.map((m) => (m.id === context?.tempMsg.id ? realMsg : m)),
-      );
-
-      // Push notifications are now handled by AppWrite Cloud Function
-      // No need to trigger manually
+      return { prev };
     },
 
     onError: (_err, _variables, context) => {
-      if (context?.tempMsg) {
-        queryClient.setQueryData(["messages", roomId], (old: Message[] = []) =>
-          old.filter((m) => m.id !== context.tempMsg.id),
-        );
+      if (context?.prev) {
+        queryClient.setQueryData(["messages", roomId], context.prev);
       }
+    },
+
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["messages", roomId] });
     },
   });
 
