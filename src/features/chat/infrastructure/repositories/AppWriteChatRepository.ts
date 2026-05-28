@@ -1,8 +1,8 @@
-import { ID, Permission, Query, Role } from "appwrite";
+import { ExecutionMethod, ID, Query } from "appwrite";
 import {
     APPWRITE_CONFIG,
     databases,
-    realtime,
+    functions,
 } from "../../../../shared/infrastructure/appwrite/client";
 import { Message, Room, UserProfile } from "../../domain/entities/Message";
 import { IChatRepository } from "../../domain/repositories/IChatRepository";
@@ -29,60 +29,34 @@ export class AppWriteChatRepository implements IChatRepository {
     }));
   }
 
-  // Creación de sala inyectando Permisos a Nivel de Documento y Metadata de perfiles
+  // Creación de sala via Cloud Function (server-side) para asignar permisos
+  // a TODOS los participantes. Desde el cliente SDK no se permite asignar
+  // permisos a otros usuarios (restricción de seguridad de AppWrite).
   async createRoom(
     name: string,
     createdBy: string,
     participantIds: string[],
   ): Promise<Room> {
-    const roomId = ID.unique();
+    // Asegurar que el creador esté incluido en los participantes
+    const allParticipants = participantIds.includes(createdBy)
+      ? participantIds
+      : [...participantIds, createdBy];
 
-    // Generar permisos explícitos de lectura/escritura para cada participante
-    const docPermissions = participantIds.map((id) =>
-      Permission.read(Role.user(id)),
-    );
-    docPermissions.push(
-      ...participantIds.map((id) => Permission.write(Role.user(id))),
-    );
-
-    // Obtener detalles de los participantes para desnormalizar
-    const participants = await databases.listDocuments(
-      this.dbId,
-      this.profilesColl,
-      [Query.equal("$id", participantIds.join(","))],
+    const execution = await functions.createExecution(
+      APPWRITE_CONFIG.FUNCTIONS.CREATE_ROOM,
+      JSON.stringify({ name, createdBy, participantIds: allParticipants }),
+      false,
+      "/",
+      ExecutionMethod.POST,
     );
 
-    const roomData = {
-      name,
-      created_by: createdBy,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      participant_ids: participantIds,
-      // Desnormalizamos la info de perfil crucial para pintarla en el feed sin hacer JOINs
-      participant_details: JSON.stringify(
-        participants.documents.map((p) => ({
-          id: p.$id,
-          username: p.username,
-          avatar_url: p.avatar_url,
-        })),
-      ),
-    };
+    const result = JSON.parse(execution.responseBody);
 
-    const doc = await databases.createDocument(
-      this.dbId,
-      this.roomsColl,
-      roomId,
-      roomData,
-      docPermissions,
-    );
+    if (!result.success) {
+      throw new Error(result.error || "Error creating room via function");
+    }
 
-    return {
-      id: doc.$id,
-      name: doc.name,
-      createdBy: doc.created_by,
-      createdAt: new Date(doc.created_at),
-      unreadCount: 0,
-    };
+    return result.room;
   }
 
   async getMessages(roomId: string): Promise<Message[]> {
@@ -192,43 +166,12 @@ export class AppWriteChatRepository implements IChatRepository {
     }
   }
 
-  // Suscripción Realtime Global + Filtro Funcional en Cliente
+  // Realtime deshabilitado: WebSocket de AppWrite roto con Hermes/Expo Cloud.
+  // Los mensajes en tiempo real llegan vía push notifications → invalidación de React Query.
   subscribeToRoom(
-    roomId: string,
-    onMessage: (message: Message) => void,
+    _roomId: string,
+    _onMessage: (message: Message) => void,
   ): () => void {
-    const channel = `databases.${this.dbId}.collections.${this.messagesColl}.documents`;
-
-    let subscription: any = null;
-
-    realtime
-      .subscribe(channel, (response) => {
-        // Validamos que el evento sea de creación de un documento
-        if (response.events.some((e) => e.includes(".create"))) {
-          const payload = response.payload as any;
-
-          // FILTRADO EN CLIENTE CRÍTICO: Comprobamos si pertenece a la sala actual
-          if (payload.room_id === roomId) {
-            onMessage({
-              id: payload.$id,
-              roomId: payload.room_id,
-              userId: payload.user_id,
-              content: payload.content,
-              imageUrl: payload.image_url,
-              createdAt: new Date(payload.created_at),
-            });
-          }
-        }
-      })
-      .then((sub) => {
-        subscription = sub;
-      });
-
-    // Retorna la función de des-suscripción para el ciclo de vida del Hook de React
-    return () => {
-      if (subscription) {
-        subscription.close();
-      }
-    };
+    return () => {};
   }
 }

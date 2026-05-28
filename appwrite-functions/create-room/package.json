@@ -1,0 +1,9 @@
+{
+  "name": "create-room",
+  "version": "1.0.0",
+  "description": "AppWrite Cloud Function for creating rooms with proper cross-user permissions",
+  "main": "src/main.js",
+  "dependencies": {
+    "node-appwrite": "^13.0.0"
+  }
+}

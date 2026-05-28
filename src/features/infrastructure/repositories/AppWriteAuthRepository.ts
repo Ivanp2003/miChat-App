@@ -42,9 +42,7 @@ export class AppWriteAuthRepository implements IAuthRepository {
       APPWRITE_CONFIG.COLLECTIONS.PROFILES,
       user.$id,
       {
-        id: user.$id,
         username,
-        email: user.email,
         role,
         avatar_url: null,
       },

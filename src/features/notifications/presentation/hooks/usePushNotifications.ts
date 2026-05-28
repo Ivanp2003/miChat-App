@@ -1,6 +1,7 @@
 import { useAuthStore } from "@features/auth/presentation/store/authStore";
+import { AppWriteNotificationRepository } from "@features/notifications/infrastructure/repositories/AppWriteNotificationRepository";
 import { SavePushTokenUseCase } from "@features/notifications/application/use-cases/SavePushTokenUseCase";
-import { SupabaseNotificationRepository } from "@features/notifications/infrastructure/repositories/SupabaseNotificationRepository";
+import { useQueryClient } from "@tanstack/react-query";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
@@ -56,6 +57,7 @@ async function registerForPushNotificationsAsync(
 export const usePushNotifications = () => {
   const user = useAuthStore((s) => s.user);
   const router = useRouter();
+  const queryClient = useQueryClient();
   const notificationListener =
     useRef<
       ReturnType<NotificationsModule["addNotificationReceivedListener"]>
@@ -85,7 +87,7 @@ export const usePushNotifications = () => {
         }),
       });
 
-      const notificationRepo = new SupabaseNotificationRepository();
+      const notificationRepo = new AppWriteNotificationRepository();
       const savePushTokenUseCase = new SavePushTokenUseCase(notificationRepo);
 
       const token = await registerForPushNotificationsAsync(Notifications);
@@ -95,7 +97,10 @@ export const usePushNotifications = () => {
 
       notificationListener.current =
         Notifications.addNotificationReceivedListener((notification) => {
-          console.log("Notification received:", notification);
+          const data = notification.request.content.data;
+          if (data?.type === 'new_message' && data?.roomId) {
+            queryClient.invalidateQueries({ queryKey: ['messages', data.roomId] });
+          }
         });
 
       responseListener.current =

@@ -1,15 +1,15 @@
 import { useAuthStore } from "@features/auth/presentation/store/authStore";
-import { SupabaseAuthRepository } from "@features/infrastructure/repositories/SupabaseAuthRepository";
-import { supabase } from "@shared/infrastructure/supabase/client";
+import { AppWriteAuthRepository } from "@features/infrastructure/repositories/AppWriteAuthRepository";
 import { ThemeProvider } from "@shared/infrastructure/theme/useTheme";
 import { ErrorBoundary } from "@shared/presentation/components/ErrorBoundary";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Slot, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
+
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
 });
-const authRepo = new SupabaseAuthRepository();
+const authRepo = new AppWriteAuthRepository();
 
 function AuthGuard() {
   const { user, setUser } = useAuthStore();
@@ -22,21 +22,14 @@ function AuthGuard() {
   }, []);
 
   useEffect(() => {
-    // Restaurar sesión desde AsyncStorage al iniciar la app
-    authRepo.getCurrentUser().then(setUser);
-
-    // Escuchar cambios de sesión: token expirado, logout en otro dispositivo
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session) {
-        const user = await authRepo.getCurrentUser();
-        setUser(user);
-      } else {
+    // Restaurar sesión desde AppWrite al iniciar la app
+    authRepo
+      .getCurrentUser()
+      .then(setUser)
+      .catch(() => {
+        // Si no hay sesión (guest), no hacer nada
         setUser(null);
-      }
-    });
-    return () => subscription.unsubscribe();
+      });
   }, []);
 
   useEffect(() => {

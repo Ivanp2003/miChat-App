@@ -2,7 +2,6 @@ import { useAuthStore } from "@features/auth/presentation/store/authStore";
 import { GetMessagesUseCase } from "@features/chat/application/use-cases/GetMessagesUseCase";
 import { MarkRoomAsReadUseCase } from "@features/chat/application/use-cases/MarkRoomAsReadUseCase";
 import { SendMessageUseCase } from "@features/chat/application/use-cases/SendMessageUseCase";
-import { SubscribeToRoomUseCase } from "@features/chat/application/use-cases/SubscribeToRoomUseCase";
 import { Message, Room } from "@features/chat/domain/entities/Message";
 import { AppWriteChatRepository } from "@features/chat/infrastructure/repositories/AppWriteChatRepository";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,7 +10,6 @@ import { useEffect } from "react";
 const chatRepo = new AppWriteChatRepository();
 const sendMessageUseCase = new SendMessageUseCase(chatRepo);
 const getMessagesUseCase = new GetMessagesUseCase(chatRepo);
-const subscribeUseCase = new SubscribeToRoomUseCase(chatRepo);
 const markReadUseCase = new MarkRoomAsReadUseCase(chatRepo);
 
 export function useChat(roomId: string | undefined) {
@@ -24,41 +22,14 @@ export function useChat(roomId: string | undefined) {
     queryFn: () =>
       roomId ? getMessagesUseCase.execute(roomId) : Promise.resolve([]),
     enabled: !!user && !!roomId,
-    // Los mensajes antiguos no se revalidan automáticamente.
-    // Realtime se encarga de los mensajes nuevos.
+    // Los mensajes nuevos llegan vía push notifications → invalidación de queries.
     staleTime: Infinity,
   });
 
-  // Paso 2: suscribirse al canal Realtime
-  useEffect(() => {
-    if (!roomId) return;
-    const unsubscribe = subscribeUseCase.execute(roomId, (newMsg) => {
-      queryClient.setQueryData(["messages", roomId], (old: Message[] = []) => {
-        // Evitar duplicados: el optimistic update ya agregó este mensaje
-        const exists = old.some((m) => m.id === newMsg.id);
-        return exists ? old : [...old, newMsg];
-      });
+  // Los mensajes nuevos llegan vía push notifications → invalidación de queries.
+  // Ya no hay suscripción Realtime (WebSocket roto con Hermes/Expo Cloud).
 
-      // Show notification if message is from another user
-      if (newMsg.userId !== user?.id && roomId) {
-        // Dynamic import to prevent expo-notifications from loading in Expo Go
-        import("@shared/infrastructure/notifications/notificationService")
-          .then(({ showChatNotification }) => {
-            showChatNotification(
-              newMsg.authorUsername ?? "Usuario",
-              newMsg.content,
-              roomId as string,
-            );
-          })
-          .catch(() => {
-            // Ignore if notifications not available (e.g., in Expo Go)
-          });
-      }
-    });
-    return unsubscribe; // Cleanup al desmontar: cierra el WebSocket
-  }, [roomId, user?.id]);
-
-  // Paso 2.1: marcar como leída la sala cuando se abre o cambian los mensajes
+  // Paso 2: marcar como leída la sala cuando se abre o cambian los mensajes
   useEffect(() => {
     if (!roomId || !user?.id) return;
     markReadUseCase
