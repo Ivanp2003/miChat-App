@@ -1,4 +1,4 @@
-import { SupabaseAuthRepository } from "@features/infrastructure/repositories/SupabaseAuthRepository";
+import { AppWriteAuthRepository } from "@features/infrastructure/repositories/AppWriteAuthRepository";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { LoginUseCase } from "../../application/use-cases/LoginUseCase";
@@ -12,7 +12,7 @@ type RegisterDto = {
   role: "cliente" | "vendedor";
 };
 
-const authRepo = new SupabaseAuthRepository();
+const authRepo = new AppWriteAuthRepository();
 const loginUseCase = new LoginUseCase(authRepo);
 const registerUseCase = new RegisterUseCase(authRepo);
 

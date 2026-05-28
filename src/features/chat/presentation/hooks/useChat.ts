@@ -4,12 +4,11 @@ import { MarkRoomAsReadUseCase } from "@features/chat/application/use-cases/Mark
 import { SendMessageUseCase } from "@features/chat/application/use-cases/SendMessageUseCase";
 import { SubscribeToRoomUseCase } from "@features/chat/application/use-cases/SubscribeToRoomUseCase";
 import { Message, Room } from "@features/chat/domain/entities/Message";
-import { SupabaseChatRepository } from "@features/chat/infrastructure/repositories/SupabaseChatRepository";
-import { supabase } from "@shared/infrastructure/supabase/client";
+import { AppWriteChatRepository } from "@features/chat/infrastructure/repositories/AppWriteChatRepository";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-const chatRepo = new SupabaseChatRepository();
+const chatRepo = new AppWriteChatRepository();
 const sendMessageUseCase = new SendMessageUseCase(chatRepo);
 const getMessagesUseCase = new GetMessagesUseCase(chatRepo);
 const subscribeUseCase = new SubscribeToRoomUseCase(chatRepo);
@@ -19,21 +18,12 @@ export function useChat(roomId: string | undefined) {
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
 
-  // Early return if roomId is undefined
-  if (!roomId) {
-    return {
-      messages: [],
-      sendMessage: () => {},
-      isLoading: false,
-      isSending: false,
-    };
-  }
-
   // Paso 1: obtener historial de mensajes con cache
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["messages", roomId], // Clave única por sala
-    queryFn: () => getMessagesUseCase.execute(roomId),
-    enabled: !!user,
+    queryFn: () =>
+      roomId ? getMessagesUseCase.execute(roomId) : Promise.resolve([]),
+    enabled: !!user && !!roomId,
     // Los mensajes antiguos no se revalidan automáticamente.
     // Realtime se encarga de los mensajes nuevos.
     staleTime: Infinity,
@@ -96,19 +86,19 @@ export function useChat(roomId: string | undefined) {
       // Upload image if provided
       if (imageUri) {
         const { uploadImage } =
-          await import("@shared/infrastructure/storage/storageService");
+          await import("@shared/infrastructure/storage/appwriteStorageService");
         const uploadedUrl = await uploadImage(imageUri);
         imageUrl = uploadedUrl ?? undefined;
       }
 
-      return sendMessageUseCase.execute(roomId, user!.id, content, imageUrl);
+      return sendMessageUseCase.execute(roomId!, user!.id, content, imageUrl);
     },
 
     // onMutate se ejecuta ANTES de la petición (optimistic update)
     onMutate: async ({ content, imageUri }) => {
       const tempMsg: Message = {
         id: `temp-${Date.now()}`,
-        roomId,
+        roomId: roomId!,
         userId: user!.id,
         content,
         imageUrl: imageUri, // Show local URI while uploading
@@ -127,19 +117,8 @@ export function useChat(roomId: string | undefined) {
         old.map((m) => (m.id === context?.tempMsg.id ? realMsg : m)),
       );
 
-      // Trigger push notification to other participants
-      supabase.functions
-        .invoke("send-push-notification", {
-          body: {
-            roomId: roomId,
-            userId: user!.id,
-            content: variables.content,
-            authorUsername: user!.username,
-          },
-        })
-        .catch((err) => {
-          console.error("Failed to trigger push notification:", err);
-        });
+      // Push notifications are now handled by AppWrite Cloud Function
+      // No need to trigger manually
     },
 
     onError: (_err, _variables, context) => {

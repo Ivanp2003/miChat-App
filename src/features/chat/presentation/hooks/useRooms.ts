@@ -1,12 +1,15 @@
 import { useAuthStore } from "@features/auth/presentation/store/authStore";
 import { CreateRoomUseCase } from "@features/chat/application/use-cases/CreateRoomUseCase";
 import { Room } from "@features/chat/domain/entities/Message";
-import { SupabaseChatRepository } from "@features/chat/infrastructure/repositories/SupabaseChatRepository";
-import { supabase } from "@shared/infrastructure/supabase/client";
+import { AppWriteChatRepository } from "@features/chat/infrastructure/repositories/AppWriteChatRepository";
+import {
+    APPWRITE_CONFIG,
+    realtime,
+} from "@shared/infrastructure/appwrite/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-const chatRepo = new SupabaseChatRepository();
+const chatRepo = new AppWriteChatRepository();
 const createRoomUseCase = new CreateRoomUseCase(chatRepo);
 
 export function useRooms() {
@@ -28,25 +31,31 @@ export function useRooms() {
   useEffect(() => {
     if (!user) return;
 
-    const channel = supabase
-      .channel("room_participants_changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "room_participants",
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          // El usuario fue agregado a una sala, refrescar la lista
-          queryClient.invalidateQueries({ queryKey: ["rooms"] });
-        },
-      )
-      .subscribe();
+    const channel = `databases.${APPWRITE_CONFIG.DATABASE_ID}.collections.${APPWRITE_CONFIG.COLLECTIONS.ROOM_PARTICIPANTS}.documents`;
+
+    let subscription: any = null;
+
+    realtime
+      .subscribe(channel, (response) => {
+        // Validamos que el evento sea de creación de un documento
+        if (response.events.some((e) => e.includes(".create"))) {
+          const payload = response.payload as any;
+
+          // FILTRADO EN CLIENTE: Comprobamos si pertenece al usuario actual
+          if (payload.user_id === user.id) {
+            // El usuario fue agregado a una sala, refrescar la lista
+            queryClient.invalidateQueries({ queryKey: ["rooms"] });
+          }
+        }
+      })
+      .then((sub) => {
+        subscription = sub;
+      });
 
     return () => {
-      supabase.removeChannel(channel);
+      if (subscription) {
+        subscription.close();
+      }
     };
   }, [user, queryClient]);
 

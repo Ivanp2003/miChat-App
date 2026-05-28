@@ -1,0 +1,12 @@
+{
+  "name": "send-chat-notification",
+  "version": "1.0.0",
+  "description": "AppWrite Cloud Function for chat push notifications and unread message counters",
+  "main": "src/main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "node-appwrite": "^13.0.0"
+  }
+}

@@ -19,6 +19,7 @@
     "@react-navigation/native": "^7.1.8",
     "@supabase/supabase-js": "^2.106.1",
     "@tanstack/react-query": "^5.100.13",
+    "appwrite": "^25.2.0",
     "expo": "~54.0.33",
     "expo-constants": "~18.0.13",
     "expo-file-system": "^56.0.7",
